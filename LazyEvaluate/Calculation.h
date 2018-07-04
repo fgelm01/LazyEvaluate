@@ -5,10 +5,9 @@ namespace libraries_oqton {
 namespace LazyEvaluate {
 
 
-template <typename DISPATCH, typename FUNC, typename ...TERMS>
+template <typename FUNC>
 class Calculation {
 private:
-  using term_tuple = std::tuple<TERMS...>;
   
 public:
   
