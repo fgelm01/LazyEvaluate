@@ -2,43 +2,61 @@
 #define OQTON_LAZY_EVALUATE_TERM_H
 #include "lang_utils/tuple.h"
 #include <type_traits>
+#include <future>
+#include <set>
 
 namespace libraries_oqton {
 namespace LazyEvaluate {
 
 class TermBase {
-protected:
-  virtual void doEvaluate() = 0;
+public:
+  using state_t = enum { UNSTARTED, PENDING, EVALUATED };
+  TermBase() : m_state(UNSTARTED) {}
+  TermBase(const state_t state) : m_state(state) {}
+  virtual void doEvaluate(std::mutex &m, std::condition_variable &cv,
+                          TermBase *&done) = 0;
+  virtual void finalize() = 0;
 
   std::vector<TermBase*> m_children;
   std::vector<TermBase*> m_parents;
-}
+  std::atomic<state_t> m_state;
+};
+
+template <typename RESULT>
+class CalculationBase {
+public:
+  virtual std::future<RESULT> operator()(std::mutex&,
+                                         std::condition_variable&,
+                                         TermBase*,
+                                         TermBase*&,
+                                         const std::vector<TermBase*>&) = 0;
+};
 
 template <typename RESULT>
 class Term : public TermBase {
-private:
-  using state_t = enum { UNSTARTED, PENDING, EVALUATED };
-  using starter_t = std::function<std::future<RESULT>(std::mutex&, std::condition_variable&, TermBase&*)>;
-  
-  template <typename ELEMENT>
-  auto get_element_product(ELEMENT &&element) {
-    if constexpr (
-      std::is_base_of<TermBase, typename std::decay<ELEMENT>::type>>::value) {
-        return *element;
-      }
-    else {
-      return element;
-    }
-  }
-
-  
-  
 public:
-  Term() : m_state(UNSTARTED) {}
-  void set_starter(starter_t &starter) {
-    m_starter = starter;
+  Term() : TermBase() {}
+
+  Term(const RESULT &value) : TermBase(EVALUATED), m_value(value) {}
+  //Term(RESULT &&value) : TermBase(EVALUATED), m_value(std::move(value)) {}
+
+  template <typename CALCULATION>
+  void set_calculation(CALCULATION &calculation) {
+    m_calculation = &calculation;
   }
-  Term(starter_t &starter) : m_starter(starter) { }
+  template <typename CALCULATION>
+  void set_calculation(CALCULATION &&calculation) {
+    m_calculation = new CALCULATION(std::move(calculation));
+  }
+  template <typename ...TERMS>
+  void set_terms(TERMS& ...terms) {
+    m_children = {(&terms)...};
+    for (auto child : m_children) {
+      child->m_parents.push_back(this);
+    }      
+  }
+  
+  //Term(starter_t &calculation) : m_calculation(calculation) { }
     
   //begins evaluation, returns immediately, is safe to call multiple times
   void evaluate() {
@@ -51,15 +69,23 @@ public:
     while(!working.empty()) {
       std::vector<TermBase*> next;
       for (TermBase* cur : working) {
-        if (seen.find(cur) == seen.end())
+        if (seen.find(cur) != seen.end())
           continue;
 
         seen.emplace(cur);
-        if (cur->m_children.empty())
+        bool dependents = false;
+        for (auto &child : cur->m_children)
+          if (child->m_state != EVALUATED) {
+            dependents = true;
+            break;
+          }
+        
+        if (!dependents)
           undependent.push_back(cur);
 
         for (TermBase* child : cur->m_children)
-          next.push_back(child);
+          if (child->m_state != EVALUATED)
+            next.push_back(child);
       }
       working = std::move(next);
     }
@@ -75,18 +101,18 @@ public:
     while (m_state != EVALUATED) {
       {
         std::unique_lock<std::mutex> lk(m);
-        cv.wait(lk, [&done](){ return done != NULL });
+        cv.wait(lk, [&done](){ return done != NULL; });
         done_local = done;
         done = NULL;
       }
-      **done_local; //force state change, should not block
+      done_local->finalize(); //force state change, should not block
       for (TermBase *parent : done_local->m_parents) {
         parent->doEvaluate(m, cv, done);
       }
     }
   }
 
-  void doEvaluate(std::mutex &m, std::condition_variable &cv, TermBase &*done) {
+  virtual void doEvaluate(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
     for (auto child : m_children) {
       //m_state is atomic, and a state will never transition back from evaluated
       //so it is safe to check if children are evaluated without locking
@@ -97,34 +123,41 @@ public:
     std::lock_guard<std::mutex> lock(m_mutex);
 
     if (m_state == UNSTARTED) {
-      m_future = m_calculation(m, cv, done, m_children);
+      m_future = (*m_calculation)(m, cv, this, done, m_children);
       m_state = PENDING;
     }
   }
   
   const RESULT& operator*() {
-    //non-locked check of atomic to see if we can skip right to return
-    if (m_state != EVALUATED) {
-      //we want to be locked when we're starting evaluation, and when we're
-      //retrieving results, but not while we're waiting
+    if (m_state == UNSTARTED)
       evaluate();
-      m_future.wait();
-      
-      std::lock_guard<std::mutex> lock(m_mutex);
-      //double check for race conditions
-      if (m_state != EVALUATED)
-        m_value = m_future.get();
-    }
-
+    
+    finalize();
     //if we get here we have guaranteed that m_value has data
     return m_value;
+  }
+    
+
+  virtual void finalize() {
+    //non-locked check of atomic to see if we can skip right to return
+    if (m_state == PENDING) {
+      //we want to be locked when we're starting evaluation, and when we're
+      //retrieving results, but not while we're waiting
+      m_future.wait();
+
+      std::lock_guard<std::mutex> lock(m_mutex);
+      //double check for race conditions
+      if (m_state != EVALUATED) {
+        m_value = m_future.get();
+        m_state = EVALUATED;
+      }
+    }
   }
            
 private:
   std::future<RESULT> m_future;
-  CALCULATION m_calculation;
+  CalculationBase<RESULT> *m_calculation;
 
-  std::atomic<state_t> m_state;
   std::mutex m_mutex;
   RESULT m_value;
 };
