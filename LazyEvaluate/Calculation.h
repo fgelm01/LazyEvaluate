@@ -55,7 +55,7 @@ private:
     lang_utils::foreach_tuple_i(
       [&terms](const size_t i, auto &arg) {
         TermBase* term_ptr = terms[i];
-        auto &term = *static_cast<Term<typename std::decay<decltype(arg)>::type>*>(term_ptr);
+        auto &term = *static_cast<TermTyped<typename std::decay<decltype(arg)>::type>*>(term_ptr);
         //arg = **(static_cast<Term<decltype(arg)>*>(terms[i]));
         arg = *term;
       }, result);
