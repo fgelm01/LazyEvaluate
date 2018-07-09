@@ -90,12 +90,11 @@ public:
 };
 
 template <typename RESULT>
-class TermTyped : public TermBase {
+class TermValue : public TermBase {
 public:
   using value_type = RESULT;
 
-  using TermBase::TermBase;
-  TermTyped(const value_type &value) : TermBase(EVALUATED), m_value(value) {}
+  TermValue(RESULT value) : TermBase(EVALUATED), m_value(value) {}
   //Term(RESULT &&value) : TermBase(EVALUATED), m_value(std::move(value)) {}
   
   const RESULT& operator*() {
@@ -106,7 +105,10 @@ public:
     //if we get here we have guaranteed that m_value has data
     return m_value;
   }
-    
+
+  //stub implementation so we can declare typed terms
+  virtual void apply(std::mutex &m, std::condition_variable &cv,
+                     TermBase *&done) {}
 
   virtual void finalize() {
     //non-locked check of atomic to see if we can skip right to return
@@ -129,21 +131,21 @@ protected:
   value_type m_value;
 };
 
-template <typename RESULT>
-class Term : public TermTyped<RESULT> {
+template <typename CALCULATION>
+class Term : public TermValue<typename CALCULATION::return_t> {
 public:
-  using TermTyped<RESULT>::TermTyped;
+  using Typed = TermValue<typename CALCULATION::return_t>;
+  using calculation_type = CALCULATION;
+
+  template <typename ...ARGS>
+  Term(ARGS&& ...args)
+    : m_calculation(calculation_type(std::forward<ARGS>(args)...)),
+      Typed(typename Typed::value_type()) {
+    TermBase::m_state = TermBase::UNSTARTED;
+  }
   
-  template <typename CALCULATION>
-  void set_calculation(CALCULATION &calculation) {
-    m_calculation = &calculation;
-  }
-  template <typename CALCULATION>
-  void set_calculation(CALCULATION &&calculation) {
-    m_calculation = new CALCULATION(std::move(calculation));
-  }
   template <typename ...TERMS>
-  void set_terms(TERMS& ...terms) {
+  void terms(TERMS& ...terms) {
     TermBase::m_children = {(&terms)...};
     for (auto child : TermBase::m_children) {
       child->m_parents.push_back(this);
@@ -156,21 +158,20 @@ public:
     for (auto child : TermBase::m_children) {
       //m_state is atomic, and a state will never transition back from evaluated
       //so it is safe to check if children are evaluated without locking
-      if (child->m_state != TermBase::EVALUATED)
-        return;
+      assert(TermBase::m_state == TermBase::EVALUATED);
     }
     
     std::lock_guard<std::mutex> lock(TermBase::m_mutex);
 
     if (TermBase::m_state == TermBase::UNSTARTED) {
-      TermTyped<RESULT>::m_future =
-        (*m_calculation)(m, cv, this, done, TermBase::m_children);
+      Typed::m_future =
+        m_calculation(m, cv, this, done, TermBase::m_children);
       TermBase::m_state = TermBase::PENDING;
     }
   }
   
 private:
-  CalculationBase<RESULT> *m_calculation;
+  calculation_type m_calculation;
 };
 
 }

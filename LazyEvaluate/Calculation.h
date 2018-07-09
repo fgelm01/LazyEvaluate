@@ -43,19 +43,20 @@ public:
 template <typename FUNC>
 class Calculation :
     public CalculationBase<typename function_traits<FUNC>::return_type> {
-private:
+public:
   using func_t = FUNC;
   using traits_t = function_traits<FUNC>;
   using args_t = typename traits_t::args_type;
   using return_t = typename traits_t::return_type;
   using future_t = typename std::future<return_t>;
-  
+
+private:
   args_t terms_to_args_tup(const std::vector<TermBase*> &terms) {
     args_t result;
     lang_utils::foreach_tuple_i(
       [&terms](const size_t i, auto &arg) {
         TermBase* term_ptr = terms[i];
-        auto &term = *static_cast<TermTyped<typename std::decay<decltype(arg)>::type>*>(term_ptr);
+        auto &term = *static_cast<TermValue<typename std::decay<decltype(arg)>::type>*>(term_ptr);
         //arg = **(static_cast<Term<decltype(arg)>*>(terms[i]));
         arg = *term;
       }, result);
