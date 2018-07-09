@@ -64,11 +64,22 @@ public:
       cv.notify_one();
       done_local->finalize(); //force state change, should not block
       for (TermBase *parent : done_local->m_parents) {
-        parent->apply(m, cv, done);
+        if (parent->terms_evaluated()) {
+          parent->apply(m, cv, done);
+        }
       }
     }
   }
 
+  bool terms_evaluated() {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    for (auto &child : m_children)
+      if (child->m_state != EVALUATED)
+        return false;
+
+    return true;
+  }
+  
   virtual void apply(std::mutex &m, std::condition_variable &cv,
                      TermBase *&done) = 0;
   virtual void finalize() = 0;
@@ -113,11 +124,11 @@ public:
   virtual void finalize() {
     //non-locked check of atomic to see if we can skip right to return
     if (m_state == PENDING) {
+      std::lock_guard<std::mutex> lock(m_mutex);
       //we want to be locked when we're starting evaluation, and when we're
       //retrieving results, but not while we're waiting
       m_future.wait();
 
-      std::lock_guard<std::mutex> lock(m_mutex);
       //double check for race conditions
       if (m_state != EVALUATED) {
         m_value = m_future.get();
@@ -155,11 +166,13 @@ public:
   //Term(starter_t &calculation) : m_calculation(calculation) { }
     
   virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
+#ifndef NDEBUG
     for (auto child : TermBase::m_children) {
       //m_state is atomic, and a state will never transition back from evaluated
       //so it is safe to check if children are evaluated without locking
-      assert(TermBase::m_state == TermBase::EVALUATED);
+      assert(child->m_state == TermBase::EVALUATED);
     }
+#endif
     
     std::lock_guard<std::mutex> lock(TermBase::m_mutex);
 
