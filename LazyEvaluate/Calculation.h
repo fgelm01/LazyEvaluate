@@ -40,6 +40,39 @@ public:
     using args_type = typename traits_type::args_type;
 };
 
+
+template <typename ...ARGS>
+void dummy(ARGS&& ...args) {}
+
+template <size_t INDEX, typename TUP1, typename TUP2>
+int test_elem_equivalency(TUP1 &&tup1, TUP2 &&tup2) {
+  static_assert(std::is_convertible<
+                typename std::tuple_element<INDEX,
+                  typename std::decay<TUP1>::type>::type,
+                typename std::tuple_element<INDEX,
+                typename std::decay<TUP2>::type>::type>::value,
+                "Term types do not match calculation parameters");
+  return 0;
+}
+
+template <typename TUP1, typename TUP2, size_t ...INDEX>
+void test_tup_equivalency_impl(TUP1 &&tup1, TUP2 &&tup2, std::index_sequence<INDEX...>) {
+  dummy(test_elem_equivalency<INDEX>(std::forward<TUP1>(tup1),
+                                     std::forward<TUP2>(tup2))...);
+}
+
+template <typename TUP1, typename TUP2>
+void test_tup_equivalency(TUP1 &&tup1, TUP2 &&tup2) {
+  static_assert(std::tuple_size<typename std::decay<TUP1>::type>::value ==
+                std::tuple_size<typename std::decay<TUP2>::type>::value,
+                "Incorrect number of terms for calculation");
+  test_tup_equivalency_impl(std::forward<TUP1>(tup1),
+                            std::forward<TUP2>(tup2),
+                            std::make_index_sequence<
+                              std::tuple_size<
+                                typename std::decay<TUP1>::type>::value>());
+}
+
 template <typename FUNC>
 class Calculation :
     public CalculationBase<typename function_traits<FUNC>::return_type> {
@@ -68,6 +101,18 @@ public:
     : m_func(func) {}
   Calculation(FUNC &&func)
     : m_func(std::move(func)) {}
+
+  template <typename TERM>
+  struct terms_to_values {
+    using type = typename TERM::value_type;
+  };
+  
+  template <typename ...TERMS>
+  void check_terms(TERMS&& ...terms) {
+    test_tup_equivalency(
+       typename lang_utils::transform_tuple_type<terms_to_values, typename std::tuple<typename std::decay<TERMS>::type...>>::type(),
+        args_t());
+  }
   
   virtual future_t operator()(std::mutex &m, std::condition_variable &cv,
                               TermBase *controller, TermBase *&done,

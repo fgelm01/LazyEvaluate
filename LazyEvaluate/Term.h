@@ -157,6 +157,7 @@ public:
   
   template <typename ...TERMS>
   void terms(TERMS& ...terms) {
+    m_calculation.check_terms(terms...);
     TermBase::m_children = {(&terms)...};
     for (auto child : TermBase::m_children) {
       child->m_parents.push_back(this);
