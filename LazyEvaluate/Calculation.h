@@ -3,6 +3,7 @@
 
 #include "Term.h"
 #include "lang_utils/tuple.h"
+#include "ThreadPoolSingleton.h"
 
 namespace libraries_oqton {
 namespace LazyEvaluate {
@@ -117,8 +118,7 @@ public:
   virtual future_t operator()(std::mutex &m, std::condition_variable &cv,
                               TermBase *controller, TermBase *&done,
                               const std::vector<TermBase*> &terms) {
-    return std::async(
-      std::launch::async,
+    return ThreadPoolSingleton::Instance()->enqueue(
       [&m, &cv, controller, &done, terms, this]() {
         auto ret = apply(m_func,
                          terms_to_args_tup(terms));

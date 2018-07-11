@@ -9,7 +9,9 @@ ${CMAKE_CURRENT_SOURCE_DIR}/../build-tools)
 
 include(common)
 
-include_directories(${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/submodules/CppLangUtils/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/submodules/CppLangUtils/include
+  ${CMAKE_CURRENT_SOURCE_DIR}/submodules/ThreadPool)
 
 find_package( Threads )
 link_libraries( ${CMAKE_THREAD_LIBS_INIT} )
