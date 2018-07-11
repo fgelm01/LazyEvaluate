@@ -124,8 +124,16 @@ public:
                          terms_to_args_tup(terms));
         {
           std::unique_lock<std::mutex> lk(m);
-          cv.wait(lk, [&done]() { return done == NULL; });
+          while (done != NULL) {
+            cv.wait(lk);
+            if (done != NULL) {
+              lk.unlock();
+              cv.notify_one();
+              lk.lock();
+            }
+          }
           done = controller;
+          lk.unlock();
         }
         cv.notify_one();
         return ret;

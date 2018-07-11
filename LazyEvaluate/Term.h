@@ -5,6 +5,8 @@
 #include <future>
 #include <set>
 
+#include <iostream>
+
 namespace libraries_oqton {
 namespace LazyEvaluate {
 
@@ -57,9 +59,17 @@ public:
     while (m_state != EVALUATED) {
       {
         std::unique_lock<std::mutex> lk(m);
-        cv.wait(lk, [&done](){ return done != NULL; });
+        while (done == NULL) {
+          cv.wait(lk);
+          if (done == NULL) {
+            lk.unlock();	
+            cv.notify_one();
+            lk.lock();
+          }
+        }
         done_local = done;
         done = NULL;
+        lk.unlock();
       }
       cv.notify_one();
       done_local->finalize(); //force state change, should not block
