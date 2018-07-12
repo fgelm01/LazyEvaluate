@@ -110,3 +110,49 @@ BOOST_AUTO_TEST_CASE(term_type_check) {
   //should compile because a char is convertable to an int
   intint2.terms(five, em);
 }
+
+struct sum_list {
+  int operator()(std::vector<int> values) {
+    std::cout << "Summing (" << values.size() << "): ";
+    for (auto value : values)
+      std::cout << value << ", ";
+    std::cout << std::endl;
+    
+    int sum = 0;
+    for (const int &value : values)
+      sum += value;
+
+    std::this_thread::sleep_for (std::chrono::seconds(1));
+    return sum;
+  }
+};
+    
+
+BOOST_AUTO_TEST_CASE(simple_term_list) {
+  TermList<int> subterms;
+
+  TermValue one(1);
+  TermValue two(2);
+  
+  subterms.push_back(TermValue(5));
+  subterms.push_back(TermValue(6));
+  subterms.push_back(Term<Calculation<func>>());
+  subterms.push_back(Term<Calculation<func>>());
+  subterms.push_back(Term<Calculation<func>>());
+  subterms.push_back(Term<Calculation<func>>());
+
+  subterms.at<Calculation<func>>(2).terms(one, two);
+  subterms.at<Calculation<func>>(3).terms(subterms[0], subterms[1]);
+  subterms.at<Calculation<func>>(4).terms(subterms[2], subterms[1]);
+  subterms.at<Calculation<func>>(5).terms(subterms[4], subterms[2]);
+
+  Term<Calculation<sum_list>> sum;
+  sum.terms(subterms);
+
+  BOOST_REQUIRE_EQUAL(*sum,
+                      5 + 6 +
+                      (1 + 2) +
+                      (5 + 6) +
+                      ((1 + 2) + 6) +
+                      (((1 + 2) + 6) + (1 + 2)));
+}

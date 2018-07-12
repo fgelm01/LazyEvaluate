@@ -1,5 +1,6 @@
 #ifndef OQTON_LAZY_EVALUATE_TERM_H
 #define OQTON_LAZY_EVALUATE_TERM_H
+#include "ThreadPoolSingleton.h"
 #include "lang_utils/tuple.h"
 #include <type_traits>
 #include <future>
@@ -15,6 +16,13 @@ public:
   using state_t = enum { UNSTARTED, PENDING, EVALUATED };
   TermBase() : m_state(UNSTARTED) {}
   TermBase(const state_t state) : m_state(state) {}
+
+  TermBase(TermBase &&other)
+    : m_children(std::move(other.m_children)),
+      m_parents(std::move(other.m_parents)),
+      m_state(other.m_state.load()) {
+    other.m_state.store(UNSTARTED);
+  }
 
   //begins evaluation, returns immediately, is safe to call multiple times
   void evaluate() {
@@ -115,6 +123,11 @@ class TermValue : public TermBase {
 public:
   using value_type = RESULT;
 
+  TermValue(TermValue<RESULT> &&other)
+    : m_future(std::move(other.m_future)),
+      m_value(std::move(other.m_value)),
+      TermBase(std::move(other)) {}
+  
   TermValue(RESULT value) : TermBase(EVALUATED), m_value(value) {}
   //Term(RESULT &&value) : TermBase(EVALUATED), m_value(std::move(value)) {}
   
@@ -158,6 +171,10 @@ public:
   using Typed = TermValue<typename CALCULATION::return_t>;
   using calculation_type = CALCULATION;
 
+  Term(Term<CALCULATION> &&other)
+    : m_calculation(std::move(other.m_calculation)),
+      Typed(std::move(other)) {}
+  
   template <typename ...ARGS>
   Term(ARGS&& ...args)
     : m_calculation(calculation_type(std::forward<ARGS>(args)...)),
@@ -196,6 +213,84 @@ public:
   
 private:
   calculation_type m_calculation;
+};
+
+template <typename VALUE>
+class TermList : public TermValue<std::vector<VALUE>> {
+public:
+  using Typed = TermValue<std::vector<VALUE>>;
+
+  TermList() : Typed(std::vector<VALUE>()) {
+    TermBase::m_state = TermBase::UNSTARTED;
+  }
+  TermList(TermList<VALUE> &&other)
+    : m_allocated(std::move(other.m_allocated)),
+      Typed(std::move(other)) {}
+  
+  template <typename SUBTERM>
+  void push_back(SUBTERM &subterm) {
+    TermBase::m_children.push_back(&subterm);
+    m_allocated.push_back(false);
+    TermBase::m_children.back()->m_parents.push_back(this);
+  }
+  
+  template <typename SUBTERM>
+  void push_back(SUBTERM &&subterm) {
+    TermBase::m_children.push_back(new SUBTERM(std::move(subterm)));
+    m_allocated.push_back(true);
+    TermBase::m_children.back()->m_parents.push_back(this);
+  }
+  
+  TermValue<VALUE>& operator[](const size_t index) {
+    return *(TermValue<VALUE>*)TermBase::m_children[index];
+  }
+
+  template <typename CALCULATION>
+  Term<CALCULATION>& at(const size_t index) {
+    return *(Term<CALCULATION>*)TermBase::m_children[index];
+  }
+
+  virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
+#ifndef NDEBUG
+    for (auto child : TermBase::m_children) {
+      //m_state is atomic, and a state will never transition back from evaluated
+      //so it is safe to check if children are evaluated without locking
+      assert(child->m_state == TermBase::EVALUATED);
+    }
+#endif
+    
+    std::lock_guard<std::mutex> lock(TermBase::m_mutex);
+
+    if (TermBase::m_state == TermBase::UNSTARTED) {
+      TermBase::m_state = TermBase::PENDING;
+    }
+
+    Typed::m_future = ThreadPoolSingleton::Instance()->enqueue(
+      [&m, &cv, this, &done]() {
+        typename Typed::value_type ret;
+        for (auto child : TermBase::m_children)
+          Typed::m_value.push_back(**static_cast<TermValue<VALUE>*>(child));
+          
+        {
+          std::unique_lock<std::mutex> lk(m);
+          while (done != NULL) {
+            cv.wait(lk);
+            if (done != NULL) {
+              lk.unlock();
+              cv.notify_one();
+              lk.lock();
+            }
+          }
+          done = this;
+          lk.unlock();
+        }
+        cv.notify_one();
+        return ret;
+      });
+  }
+
+private:
+  std::vector<bool> m_allocated;
 };
 
 }
