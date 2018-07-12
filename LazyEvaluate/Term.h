@@ -269,7 +269,7 @@ public:
       [&m, &cv, this, &done]() {
         typename Typed::value_type ret;
         for (auto child : TermBase::m_children)
-          Typed::m_value.push_back(**static_cast<TermValue<VALUE>*>(child));
+          ret.push_back(**static_cast<TermValue<VALUE>*>(child));
           
         {
           std::unique_lock<std::mutex> lk(m);
