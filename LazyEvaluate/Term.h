@@ -19,6 +19,7 @@ public:
 
   TermBase(TermBase &&other)
     : m_children(std::move(other.m_children)),
+      m_allocated(std::move(other.m_allocated)),
       m_parents(std::move(other.m_parents)),
       m_state(other.m_state.load()) {
     other.m_state.store(UNSTARTED);
@@ -97,12 +98,34 @@ public:
 
     return true;
   }
-  
+
   virtual void apply(std::mutex &m, std::condition_variable &cv,
                      TermBase *&done) = 0;
   virtual void finalize() = 0;
 
+  virtual ~TermBase() {
+    assert(m_allocated.size() == m_children.size());
+    for (size_t i = 0; i < m_allocated.size(); ++i) {
+      if (m_allocated[i])
+        delete m_children[i];
+    }
+  }
+  
+  template <typename TERM>
+  void add_child(TERM &&child) {
+    bool isrvalue = std::is_lvalue_reference<TERM>::value;
+    if constexpr (std::is_lvalue_reference<TERM>::value) {
+      m_children.push_back(&child);
+      m_allocated.push_back(false);
+    } else {
+      m_children.push_back(new TERM(std::move(child)));
+      m_allocated.push_back(true);
+    }
+    m_children.back()->m_parents.push_back(this);
+  }
+  
   std::vector<TermBase*> m_children;
+  std::vector<bool> m_allocated;
   std::vector<TermBase*> m_parents;
   std::atomic<state_t> m_state;
   std::mutex m_mutex;
@@ -159,7 +182,9 @@ public:
       }
     }
   }
-           
+
+  virtual ~TermValue() {}
+  
 protected:
   std::future<value_type> m_future;
   value_type m_value;
@@ -183,12 +208,10 @@ public:
   }
   
   template <typename ...TERMS>
-  void terms(TERMS& ...terms) {
+  void terms(TERMS&& ...terms) {
+    assert(TermBase::m_children.empty());
     m_calculation.check_terms(terms...);
-    TermBase::m_children = {(&terms)...};
-    for (auto child : TermBase::m_children) {
-      child->m_parents.push_back(this);
-    }      
+    (TermBase::add_child(std::forward<TERMS>(terms)), ...);
   }
   
   //Term(starter_t &calculation) : m_calculation(calculation) { }
@@ -210,7 +233,8 @@ public:
       TermBase::m_state = TermBase::PENDING;
     }
   }
-  
+
+  virtual ~Term() {}
 private:
   calculation_type m_calculation;
 };
@@ -223,22 +247,12 @@ public:
   TermList() : Typed(std::vector<VALUE>()) {
     TermBase::m_state = TermBase::UNSTARTED;
   }
-  TermList(TermList<VALUE> &&other)
-    : m_allocated(std::move(other.m_allocated)),
-      Typed(std::move(other)) {}
-  
-  template <typename SUBTERM>
-  void push_back(SUBTERM &subterm) {
-    TermBase::m_children.push_back(&subterm);
-    m_allocated.push_back(false);
-    TermBase::m_children.back()->m_parents.push_back(this);
-  }
+  TermList(TermList<VALUE> &&other) 
+    : Typed(std::move(other)) {}
   
   template <typename SUBTERM>
   void push_back(SUBTERM &&subterm) {
-    TermBase::m_children.push_back(new SUBTERM(std::move(subterm)));
-    m_allocated.push_back(true);
-    TermBase::m_children.back()->m_parents.push_back(this);
+    TermBase::add_child(std::forward<SUBTERM>(subterm));
   }
   
   TermValue<VALUE>& operator[](const size_t index) {
@@ -289,8 +303,7 @@ public:
       });
   }
 
-private:
-  std::vector<bool> m_allocated;
+  virtual ~TermList() {}
 };
 
 }
