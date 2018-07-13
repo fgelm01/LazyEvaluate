@@ -155,4 +155,6 @@ BOOST_AUTO_TEST_CASE(simple_term_list) {
                       (5 + 6) +
                       ((1 + 2) + 6) +
                       (((1 + 2) + 6) + (1 + 2)));
+  BOOST_REQUIRE_EQUAL(subterms.no_eval_access().size(), 0);
+  BOOST_REQUIRE_EQUAL(subterms->size(), 6);
 }

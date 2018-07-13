@@ -3,6 +3,7 @@
 #include "ThreadPoolSingleton.h"
 #include "lang_utils/tuple.h"
 #include <type_traits>
+#include <experimental/type_traits>
 #include <future>
 #include <set>
 
@@ -10,6 +11,21 @@
 
 namespace libraries_oqton {
 namespace LazyEvaluate {
+
+template<typename T>
+using clear_method_t =
+  decltype( std::declval<T&>().clear() );
+
+template <typename VALUE>
+bool clear_data(VALUE &&value) {
+  if constexpr (std::experimental::is_detected_v<clear_method_t, VALUE>) {
+    value.clear();
+    return true;
+  }
+  else {
+    return false;
+  }
+}
 
 class TermBase {
 public:
@@ -83,14 +99,19 @@ public:
       cv.notify_one();
       done_local->finalize(); //force state change, should not block
       for (TermBase *parent : done_local->m_parents) {
-        if (parent->terms_evaluated()) {
+        if (parent->children_evaluated()) {
           parent->apply(m, cv, done);
+        }
+      }
+      for (TermBase *child : done_local->m_children) {
+        if (child->parents_evaluated()) {
+          child->clear();
         }
       }
     }
   }
 
-  bool terms_evaluated() {
+  bool children_evaluated() {
     std::lock_guard<std::mutex> lk(m_mutex);
     for (auto &child : m_children)
       if (child->m_state != EVALUATED)
@@ -99,9 +120,19 @@ public:
     return true;
   }
 
+  bool parents_evaluated() {
+    std::lock_guard<std::mutex> lk(m_mutex);
+    for (auto &parent : m_parents)
+      if (parent->m_state != EVALUATED)
+        return false;
+
+    return true;
+  }
+
   virtual void apply(std::mutex &m, std::condition_variable &cv,
                      TermBase *&done) = 0;
   virtual void finalize() = 0;
+  virtual void clear() = 0;
 
   virtual ~TermBase() {
     assert(m_allocated.size() == m_children.size());
@@ -153,6 +184,10 @@ public:
   
   TermValue(RESULT value) : TermBase(EVALUATED), m_value(value) {}
   //Term(RESULT &&value) : TermBase(EVALUATED), m_value(std::move(value)) {}
+
+  const RESULT& no_eval_access() {
+    return m_value;
+  }
   
   const RESULT& operator*() {
     if (m_state == UNSTARTED)
@@ -161,6 +196,10 @@ public:
     finalize();
     //if we get here we have guaranteed that m_value has data
     return m_value;
+  }
+
+  const RESULT* operator->() {
+    return &**this;
   }
 
   //stub implementation so we can declare typed terms
@@ -183,6 +222,8 @@ public:
     }
   }
 
+  virtual void clear() { }
+    
   virtual ~TermValue() {}
   
 protected:
@@ -232,6 +273,12 @@ public:
         m_calculation(m, cv, this, done, TermBase::m_children);
       TermBase::m_state = TermBase::PENDING;
     }
+  }
+
+  virtual void clear() {
+    std::lock_guard<std::mutex> lock(TermBase::m_mutex);
+    if (clear_data(Typed::m_value))
+      TermBase::m_state = TermBase::UNSTARTED;
   }
 
   virtual ~Term() {}
@@ -301,6 +348,12 @@ public:
         cv.notify_one();
         return ret;
       });
+  }
+
+  virtual void clear() {
+    std::lock_guard<std::mutex> lock(TermBase::m_mutex);
+    if (clear_data(Typed::m_value))
+      TermBase::m_state = Typed::UNSTARTED;
   }
 
   virtual ~TermList() {}
