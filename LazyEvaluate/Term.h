@@ -6,6 +6,7 @@
 #include <experimental/type_traits>
 #include <future>
 #include <set>
+#include <boost/iterator/transform_iterator.hpp>
 
 #include <iostream>
 
@@ -288,8 +289,34 @@ private:
 
 template <typename VALUE>
 class TermList : public TermValue<std::vector<VALUE>> {
+  static TermValue<VALUE>& MakeTermElem(TermBase *base) {
+    return *static_cast<TermValue<VALUE>>(base);
+  }
+  
 public:
   using Typed = TermValue<std::vector<VALUE>>;
+  class iterator :
+    public boost::transform_iterator<decltype(*MakeTermElem),
+                                     std::vector<TermBase*>::iterator,
+                                     TermValue<VALUE>> {
+  public:
+    template <typename BASE>
+    iterator(BASE &&base) : boost::transform_iterator<decltype(*MakeTermElem),
+                                     std::vector<TermBase*>::iterator,
+                                                       TermValue<VALUE>>(base)
+    {}
+
+    template <typename CALCULATION>
+    Term<CALCULATION>& as() {
+#ifdef NDEBUG
+      return *static_cast<Term<CALCULATION>*>(&**this);
+#else
+      Term<CALCULATION>* term = dynamic_cast<Term<CALCULATION>*>(&**this);
+      assert(term != nullptr);
+      return *term;
+#endif
+    }
+  };
 
   TermList() : Typed(std::vector<VALUE>()) {
     TermBase::m_state = TermBase::UNSTARTED;
@@ -308,7 +335,22 @@ public:
 
   template <typename CALCULATION>
   Term<CALCULATION>& at(const size_t index) {
-    return *(Term<CALCULATION>*)TermBase::m_children[index];
+#ifndef NDEBUG
+    return *static_cast<Term<CALCULATION>*>(TermBase::m_children[index]);
+#else
+    Term<CALCULATION>* term = dynamic_cast<Term<CALCULATION>*>(&**this);
+    assert(term != nullptr);
+    return *term;
+#endif
+  }
+
+
+  iterator begin() {
+    return iterator(TermBase::m_children.begin());
+  }
+
+  iterator end() {
+    return iterator(TermBase::m_children.begin());
   }
 
   virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {

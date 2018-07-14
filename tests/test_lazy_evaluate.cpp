@@ -158,3 +158,26 @@ BOOST_AUTO_TEST_CASE(simple_term_list) {
   BOOST_REQUIRE_EQUAL(subterms.no_eval_access().size(), 0);
   BOOST_REQUIRE_EQUAL(subterms->size(), 6);
 }
+
+BOOST_AUTO_TEST_CASE(test_list_in_order) {
+  TermList<int> subterms;
+
+  subterms.push_back(TermValue(1));
+  subterms.push_back(TermValue(1));
+  for (size_t i = 0; i < 10; ++i) 
+    subterms.push_back(Term<Calculation<func>>());
+
+  for (auto i = subterms.begin() + 2; i != subterms.end(); ++i) {
+    i.as<Calculation<func>>().terms(*(i - 1), *(i - 2));
+  }
+
+  auto fib = *subterms;
+  BOOST_REQUIRE_EQUAL(fib[2], 2);
+  BOOST_REQUIRE_EQUAL(fib[3], 3);
+  BOOST_REQUIRE_EQUAL(fib[4], 5);
+  BOOST_REQUIRE_EQUAL(fib[5], 8);
+  BOOST_REQUIRE_EQUAL(fib[6], 13);
+  BOOST_REQUIRE_EQUAL(fib[7], 21);
+  BOOST_REQUIRE_EQUAL(fib[8], 34);
+  BOOST_REQUIRE_EQUAL(fib[9], 55);
+}

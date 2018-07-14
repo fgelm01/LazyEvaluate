@@ -15,6 +15,7 @@ include_directories(${CMAKE_CURRENT_SOURCE_DIR}
 
 find_package( Threads )
 link_libraries( ${CMAKE_THREAD_LIBS_INIT} )
+global_use_third_party(boost 1.66.0)
 
 enable_testing()
 add_tests(TEST_SRCS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/tests)
