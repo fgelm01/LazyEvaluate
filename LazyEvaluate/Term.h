@@ -173,6 +173,8 @@ public:
                                          const std::vector<TermBase*>&) = 0;
 };
 
+template <typename CALCULATION> class Term;
+
 template <typename RESULT>
 class TermValue : public TermBase {
 public:
@@ -221,6 +223,17 @@ public:
         m_state = EVALUATED;
       }
     }
+  }
+
+  template <typename CALCULATION>
+  Term<CALCULATION>& as() {
+#ifdef NDEBUG
+      return *static_cast<Term<CALCULATION>*>(this);
+#else
+      Term<CALCULATION>* term = dynamic_cast<Term<CALCULATION>*>(this);
+      assert(term != nullptr);
+      return *term;
+#endif
   }
 
   virtual void clear() { }
@@ -290,33 +303,11 @@ private:
 template <typename VALUE>
 class TermList : public TermValue<std::vector<VALUE>> {
   static TermValue<VALUE>& MakeTermElem(TermBase *base) {
-    return *static_cast<TermValue<VALUE>>(base);
+    return *static_cast<TermValue<VALUE>*>(base);
   }
   
 public:
   using Typed = TermValue<std::vector<VALUE>>;
-  class iterator :
-    public boost::transform_iterator<decltype(*MakeTermElem),
-                                     std::vector<TermBase*>::iterator,
-                                     TermValue<VALUE>> {
-  public:
-    template <typename BASE>
-    iterator(BASE &&base) : boost::transform_iterator<decltype(*MakeTermElem),
-                                     std::vector<TermBase*>::iterator,
-                                                       TermValue<VALUE>>(base)
-    {}
-
-    template <typename CALCULATION>
-    Term<CALCULATION>& as() {
-#ifdef NDEBUG
-      return *static_cast<Term<CALCULATION>*>(&**this);
-#else
-      Term<CALCULATION>* term = dynamic_cast<Term<CALCULATION>*>(&**this);
-      assert(term != nullptr);
-      return *term;
-#endif
-    }
-  };
 
   TermList() : Typed(std::vector<VALUE>()) {
     TermBase::m_state = TermBase::UNSTARTED;
@@ -335,23 +326,22 @@ public:
 
   template <typename CALCULATION>
   Term<CALCULATION>& at(const size_t index) {
-#ifndef NDEBUG
-    return *static_cast<Term<CALCULATION>*>(TermBase::m_children[index]);
-#else
-    Term<CALCULATION>* term = dynamic_cast<Term<CALCULATION>*>(&**this);
-    assert(term != nullptr);
-    return *term;
-#endif
+    return (*this)[index].template as<CALCULATION>();
   }
 
 
-  iterator begin() {
-    return iterator(TermBase::m_children.begin());
+  auto begin() {
+    return boost::make_transform_iterator(TermBase::m_children.begin(),
+                                          MakeTermElem);
   }
 
-  iterator end() {
-    return iterator(TermBase::m_children.begin());
+  auto end() {
+    return boost::make_transform_iterator(TermBase::m_children.end(),
+                                          MakeTermElem);
   }
+
+  using iterator = decltype(boost::make_transform_iterator(TermBase::m_children.begin(),
+                                                           MakeTermElem));
 
   virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
 #ifndef NDEBUG

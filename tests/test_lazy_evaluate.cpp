@@ -168,7 +168,7 @@ BOOST_AUTO_TEST_CASE(test_list_in_order) {
     subterms.push_back(Term<Calculation<func>>());
 
   for (auto i = subterms.begin() + 2; i != subterms.end(); ++i) {
-    i.as<Calculation<func>>().terms(*(i - 1), *(i - 2));
+    i->as<Calculation<func>>().terms(*(i - 1), *(i - 2));
   }
 
   auto fib = *subterms;
