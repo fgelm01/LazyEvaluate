@@ -15,6 +15,12 @@ struct adder {
   }
 };
 
+int bare_adder(int a, int b) {
+  std::cout << "Starting add " << a << " + " << b << std::endl;
+  std::this_thread::sleep_for (std::chrono::seconds(1));
+  return a + b;
+}
+
 using namespace libraries_oqton::LazyEvaluate;
 
 BOOST_AUTO_TEST_CASE(simple_calc) {
@@ -60,6 +66,39 @@ BOOST_AUTO_TEST_CASE(term_from_instance) {
   TermValue six(6);
   adder a;
   Term eleven(a);
+  
+  eleven.terms(five, six);
+  int result = *eleven;
+  BOOST_REQUIRE_EQUAL(result, 11);
+}
+
+BOOST_AUTO_TEST_CASE(term_from_func_ptr) {
+  TermValue five(5);
+  TermValue six(6);
+  Term eleven(&bare_adder);
+  
+  eleven.terms(five, six);
+  int result = *eleven;
+  BOOST_REQUIRE_EQUAL(result, 11);
+}
+
+BOOST_AUTO_TEST_CASE(term_from_lambda) {
+  TermValue five(5);
+  TermValue six(6);
+  auto lam = [](int a, int b) {
+    return a + b;
+  };
+  Term eleven(lam);
+  
+  eleven.terms(five, six);
+  int result = *eleven;
+  BOOST_REQUIRE_EQUAL(result, 11);
+}
+
+BOOST_AUTO_TEST_CASE(term_from_lambda_temp) {
+  TermValue five(5);
+  TermValue six(6);
+  Term eleven([](int a, int b) { return a + b; });
   
   eleven.terms(five, six);
   int result = *eleven;
