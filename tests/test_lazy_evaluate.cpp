@@ -6,7 +6,8 @@
 #include <thread>
 #include <iostream>
 
-struct func {
+struct adder {
+  adder(){}
   int operator()(int a, int b) {
     std::cout << "Starting add " << a << " + " << b << std::endl;
     std::this_thread::sleep_for (std::chrono::seconds(1));
@@ -17,7 +18,7 @@ struct func {
 using namespace libraries_oqton::LazyEvaluate;
 
 BOOST_AUTO_TEST_CASE(simple_calc) {
-  Calculation<func> calc;
+  ThreadPoolCalculation<adder> calc;
   std::mutex m;
   std::condition_variable cv;
   TermValue one(5);
@@ -33,7 +34,32 @@ BOOST_AUTO_TEST_CASE(simple_calc) {
 BOOST_AUTO_TEST_CASE(simple_compound_term) {
   TermValue five(5);
   TermValue six(6);
-  Term<Calculation<func>> eleven;
+  Term<adder> eleven;
+  
+  eleven.terms(five, six);
+  int result = *eleven;
+  BOOST_REQUIRE_EQUAL(result, 11);
+}
+
+BOOST_AUTO_TEST_CASE(term_from_temporary) {
+  TermValue five(5);
+  TermValue six(6);
+  // This should work, but seems to trigger a bug in g++
+  //Term eleven(adder());
+
+  // So instead declare terms from temporaries like this
+  auto eleven = Term(adder());
+  
+  eleven.terms(five, six);
+  int result = *eleven;
+  BOOST_REQUIRE_EQUAL(result, 11);
+}
+
+BOOST_AUTO_TEST_CASE(term_from_instance) {
+  TermValue five(5);
+  TermValue six(6);
+  adder a;
+  Term eleven(a);
   
   eleven.terms(five, six);
   int result = *eleven;
@@ -48,13 +74,13 @@ BOOST_AUTO_TEST_CASE(two_level_term) {
   TermValue seven(7);
   TermValue eight(8);
 
-  Term<Calculation<func>> eleven;
+  Term<adder> eleven;
   eleven.terms(five, six);
 
-  Term<Calculation<func>> fifteen;
+  Term<adder> fifteen;
   fifteen.terms(seven, eight);
 
-  Term<Calculation<func>> twentysix;
+  Term<adder> twentysix;
   twentysix.terms(eleven, fifteen);  
 
   std::cout << "Evaluating term" << std::endl;
@@ -70,16 +96,16 @@ BOOST_AUTO_TEST_CASE(diamond_term) {
   TermValue two(2);
   TermValue four(4);
 
-  Term<Calculation<func>> six;
+  Term<adder> six;
   six.terms(two, four);
 
-  Term<Calculation<func>> eleven;
+  Term<adder> eleven;
   eleven.terms(five, six);
 
-  Term<Calculation<func>> fourteen;
+  Term<adder> fourteen;
   fourteen.terms(six, eight);
 
-  Term<Calculation<func>> twentyfive;
+  Term<adder> twentyfive;
   twentyfive.terms(eleven, fourteen);  
 
   std::cout << "Evaluating term" << std::endl;
@@ -91,11 +117,11 @@ BOOST_AUTO_TEST_CASE(term_type_check) {
   TermValue five(5);
   TermValue six(6);
 
-  Term<Calculation<func>> intint1;
+  Term<adder> intint1;
   intint1.terms(five, six);
 
   TermValue str(std::string("Something"));
-  Term<Calculation<func>> intint2;
+  Term<adder> intint2;
   TermValue seven(7);
 
   //Should fail to compile using term type check
@@ -136,17 +162,17 @@ BOOST_AUTO_TEST_CASE(simple_term_list) {
   
   subterms.push_back(TermValue(5));
   subterms.push_back(TermValue(6));
-  subterms.push_back(Term<Calculation<func>>());
-  subterms.push_back(Term<Calculation<func>>());
-  subterms.push_back(Term<Calculation<func>>());
-  subterms.push_back(Term<Calculation<func>>());
+  subterms.push_back(Term<adder>());
+  subterms.push_back(Term<adder>());
+  subterms.push_back(Term<adder>());
+  subterms.push_back(Term<adder>());
 
-  subterms.at<Calculation<func>>(2).terms(one, two);
-  subterms.at<Calculation<func>>(3).terms(subterms[0], subterms[1]);
-  subterms.at<Calculation<func>>(4).terms(subterms[2], subterms[1]);
-  subterms.at<Calculation<func>>(5).terms(subterms[4], subterms[2]);
+  subterms.at<adder>(2).terms(one, two);
+  subterms.at<adder>(3).terms(subterms[0], subterms[1]);
+  subterms.at<adder>(4).terms(subterms[2], subterms[1]);
+  subterms.at<adder>(5).terms(subterms[4], subterms[2]);
 
-  Term<Calculation<sum_list>> sum;
+  Term<sum_list> sum;
   sum.terms(subterms);
 
   BOOST_REQUIRE_EQUAL(*sum,
@@ -165,10 +191,10 @@ BOOST_AUTO_TEST_CASE(test_list_in_order) {
   subterms.push_back(TermValue(1));
   subterms.push_back(TermValue(1));
   for (size_t i = 0; i < 10; ++i) 
-    subterms.push_back(Term<Calculation<func>>());
+    subterms.push_back(Term<adder>());
 
   for (auto i = subterms.begin() + 2; i != subterms.end(); ++i) {
-    i->as<Calculation<func>>().terms(*(i - 1), *(i - 2));
+    i->as<adder>().terms(*(i - 1), *(i - 2));
   }
 
   auto fib = *subterms;

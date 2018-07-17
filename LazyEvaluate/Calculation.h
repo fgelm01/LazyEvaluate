@@ -75,7 +75,7 @@ void test_tup_equivalency(TUP1 &&tup1, TUP2 &&tup2) {
 }
 
 template <typename FUNC>
-class Calculation :
+class ThreadPoolCalculation :
     public CalculationBase<typename function_traits<FUNC>::return_type> {
 public:
   using func_t = FUNC;
@@ -98,9 +98,9 @@ private:
   }
   
 public:
-  Calculation(const FUNC &func = FUNC())
+  ThreadPoolCalculation(const FUNC &func = FUNC())
     : m_func(func) {}
-  Calculation(FUNC &&func)
+  ThreadPoolCalculation(FUNC &&func)
     : m_func(std::move(func)) {}
 
   template <typename TERM>

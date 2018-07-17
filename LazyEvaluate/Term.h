@@ -173,7 +173,10 @@ public:
                                          const std::vector<TermBase*>&) = 0;
 };
 
-template <typename CALCULATION> class Term;
+template <typename FUNC> class ThreadPoolCalculation;
+
+
+template <typename FUNC, template <typename> class CALC> class Term;
 
 template <typename RESULT>
 class TermValue : public TermBase {
@@ -225,12 +228,12 @@ public:
     }
   }
 
-  template <typename CALCULATION>
-  Term<CALCULATION>& as() {
+  template <typename FUNC, template <typename> class CALC=ThreadPoolCalculation>
+  Term<FUNC, CALC>& as() {
 #ifdef NDEBUG
-      return *static_cast<Term<CALCULATION>*>(this);
+    return *static_cast<Term<FUNC, CALC>*>(this);
 #else
-      Term<CALCULATION>* term = dynamic_cast<Term<CALCULATION>*>(this);
+    Term<FUNC, CALC>* term = dynamic_cast<Term<FUNC, CALC>*>(this);
       assert(term != nullptr);
       return *term;
 #endif
@@ -245,19 +248,32 @@ protected:
   value_type m_value;
 };
 
-template <typename CALCULATION>
-class Term : public TermValue<typename CALCULATION::return_t> {
+template <typename FUNC,
+          template <typename> class CALC=ThreadPoolCalculation>
+class Term : public TermValue<typename CALC<FUNC>::return_t> {
 public:
-  using Typed = TermValue<typename CALCULATION::return_t>;
-  using calculation_type = CALCULATION;
+  using Me = Term<FUNC, CALC>;
+  using Typed = TermValue<typename CALC<FUNC>::return_t>;
+  using calculation_type = CALC<FUNC>;
 
-  Term(Term<CALCULATION> &&other)
+  Term(Me &&other)
     : m_calculation(std::move(other.m_calculation)),
       Typed(std::move(other)) {}
   
-  template <typename ...ARGS>
-  Term(ARGS&& ...args)
-    : m_calculation(calculation_type(std::forward<ARGS>(args)...)),
+  Term(FUNC &func)
+    : m_calculation(calculation_type(func)),
+      Typed(typename Typed::value_type()) {
+    TermBase::m_state = TermBase::UNSTARTED;
+  }
+  
+  Term(FUNC &&func)
+    : m_calculation(calculation_type(std::move(func))),
+      Typed(typename Typed::value_type()) {
+    TermBase::m_state = TermBase::UNSTARTED;
+  }
+
+  Term()
+    : m_calculation(calculation_type(FUNC())),
       Typed(typename Typed::value_type()) {
     TermBase::m_state = TermBase::UNSTARTED;
   }
@@ -300,6 +316,13 @@ private:
   calculation_type m_calculation;
 };
 
+//Only need this because there is something wrong with the declaration syntax
+//auto myterm = 
+template <typename FUNC, template <typename> class CALC=ThreadPoolCalculation>
+auto makeTerm(FUNC &&func) {
+  return Term<FUNC, CALC>(std::forward<FUNC>(func));
+}
+
 template <typename VALUE>
 class TermList : public TermValue<std::vector<VALUE>> {
   static TermValue<VALUE>& MakeTermElem(TermBase *base) {
@@ -324,9 +347,9 @@ public:
     return *(TermValue<VALUE>*)TermBase::m_children[index];
   }
 
-  template <typename CALCULATION>
-  Term<CALCULATION>& at(const size_t index) {
-    return (*this)[index].template as<CALCULATION>();
+  template <typename FUNC, template <typename> class CALC=ThreadPoolCalculation>
+  Term<FUNC, CALC>& at(const size_t index) {
+    return (*this)[index].template as<FUNC, CALC>();
   }
 
 
