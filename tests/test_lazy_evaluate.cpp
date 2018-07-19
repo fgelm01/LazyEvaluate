@@ -256,3 +256,15 @@ BOOST_AUTO_TEST_CASE(test_list_in_order) {
   BOOST_REQUIRE_EQUAL(fib[8], 34);
   BOOST_REQUIRE_EQUAL(fib[9], 55);
 }
+
+BOOST_AUTO_TEST_CASE(test_term_return) {
+  Term<adder> top;
+  auto [a, b] = top.terms(Term<adder>(), Term<adder>());
+
+  a.terms(TermValue(5), TermValue(6));
+  b.terms(TermValue(1), TermValue(2));
+
+  BOOST_REQUIRE_EQUAL(*top, 14);
+}
+
+  

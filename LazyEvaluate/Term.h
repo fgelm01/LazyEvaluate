@@ -297,10 +297,12 @@ public:
   void terms() {}
   
   template <typename ...TERMS>
-  void terms(TERMS&& ...terms) {
+  auto terms(TERMS&& ...terms) {
     assert(TermBase::m_children.empty());
     m_calculation.check_terms(terms...);
     (TermBase::add_child(std::forward<TERMS>(terms)), ...);
+
+    return term_ref_tup<TERMS...>();
   }
   
   //Term(starter_t &calculation) : m_calculation(calculation) { }
@@ -331,6 +333,22 @@ public:
 
   virtual ~Term() {}
 private:
+
+  template <typename REF_TUP, size_t POSITION>
+  typename std::tuple_element<POSITION, REF_TUP>::type& term_ref_impl() {
+    return *static_cast<typename std::decay<typename std::tuple_element<POSITION, REF_TUP>::type>::type*>(TermBase::m_children[POSITION]);
+  }
+  
+  template <typename REF_TUP, size_t ...INDICES>
+  REF_TUP term_ref_tup_impl(std::index_sequence<INDICES...> index_sequence) {
+    return REF_TUP(term_ref_impl<REF_TUP, INDICES>()...);
+  }
+
+  template <typename ...TERMS>
+  auto term_ref_tup() {
+    return term_ref_tup_impl<typename std::tuple<typename std::add_lvalue_reference<TERMS>::type...>>(std::make_index_sequence<std::tuple_size<std::tuple<TERMS...>>::value>());
+  }
+
   calculation_type m_calculation;
 };
 
