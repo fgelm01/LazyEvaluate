@@ -214,12 +214,12 @@ BOOST_AUTO_TEST_CASE(simple_term_list) {
   subterms.push_back(Term<adder>());
   subterms.push_back(Term<adder>());
   subterms.push_back(Term<adder>());
-  subterms.push_back(Term<adder>());
+  auto &last = subterms.push_back(Term<adder>());
 
   subterms.at<adder>(2).terms(one, two);
   subterms.at<adder>(3).terms(subterms[0], subterms[1]);
   subterms.at<adder>(4).terms(subterms[2], subterms[1]);
-  subterms.at<adder>(5).terms(subterms[4], subterms[2]);
+  last.terms(subterms[4], subterms[2]);
 
   Term<sum_list> sum;
   sum.terms(subterms);

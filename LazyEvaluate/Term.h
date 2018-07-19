@@ -375,8 +375,9 @@ public:
     : Typed(std::move(other)) {}
   
   template <typename SUBTERM>
-  void push_back(SUBTERM &&subterm) {
+  typename std::decay<SUBTERM>::type& push_back(SUBTERM &&subterm) {
     TermBase::add_child(std::forward<SUBTERM>(subterm));
+    return *static_cast<typename std::decay<SUBTERM>::type*>(TermBase::m_children.back());
   }
   
   TermValue<VALUE>& operator[](const size_t index) {
