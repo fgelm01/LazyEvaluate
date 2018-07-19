@@ -105,6 +105,16 @@ BOOST_AUTO_TEST_CASE(term_from_lambda_temp) {
   BOOST_REQUIRE_EQUAL(result, 11);
 }
 
+BOOST_AUTO_TEST_CASE(inline_subterms) {
+  TermValue five(5);
+  TermValue six(6);
+  Term eleven([](int a, int b) { return a + b; },
+              five, six);
+  
+  int result = *eleven;
+  BOOST_REQUIRE_EQUAL(result, 11);
+}
+
 BOOST_AUTO_TEST_CASE(two_level_term) {
 
   std::cout << "Setting up term" << std::endl;

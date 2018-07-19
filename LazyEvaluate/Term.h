@@ -215,11 +215,11 @@ public:
   virtual void finalize() {
     //non-locked check of atomic to see if we can skip right to return
     if (m_state == PENDING) {
-      std::lock_guard<std::mutex> lock(m_mutex);
       //we want to be locked when we're starting evaluation, and when we're
       //retrieving results, but not while we're waiting
       m_future.wait();
 
+      std::lock_guard<std::mutex> lock(m_mutex);
       //double check for race conditions
       if (m_state != EVALUATED) {
         m_value = m_future.get();
@@ -237,6 +237,18 @@ public:
       assert(term != nullptr);
       return *term;
 #endif
+  }
+
+  void operator=(value_type &value) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_value = value;
+    m_state = EVALUATED;
+  }
+
+  void operator=(value_type &&value) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    m_value = std::move(value);
+    m_state = EVALUATED;
   }
 
   virtual void clear() { }
@@ -259,17 +271,21 @@ public:
   Term(Me &&other)
     : m_calculation(std::move(other.m_calculation)),
       Typed(std::move(other)) {}
-  
-  Term(FUNC &func)
+
+  template <typename ...TERMS>
+  Term(FUNC &func, TERMS&& ...subterms)
     : m_calculation(calculation_type(func)),
       Typed(typename Typed::value_type()) {
     TermBase::m_state = TermBase::UNSTARTED;
+    terms(std::forward<TERMS>(subterms)...);
   }
-  
-  Term(FUNC &&func)
+
+  template <typename ...TERMS>
+  Term(FUNC &&func, TERMS&& ...subterms)
     : m_calculation(calculation_type(std::move(func))),
       Typed(typename Typed::value_type()) {
     TermBase::m_state = TermBase::UNSTARTED;
+    terms(std::forward<TERMS>(subterms)...);
   }
 
   Term()
@@ -277,6 +293,8 @@ public:
       Typed(typename Typed::value_type()) {
     TermBase::m_state = TermBase::UNSTARTED;
   }
+
+  void terms() {}
   
   template <typename ...TERMS>
   void terms(TERMS&& ...terms) {
