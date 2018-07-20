@@ -304,9 +304,20 @@ public:
 
     return term_ref_tup<TERMS...>();
   }
+
+  void calculation(const FUNC &func) {
+    m_calculation = calculation_type(func);
+  }
+
+  void calculation(FUNC &&func) {
+    m_calculation = calculation_type(std::move(func));
+  }
+
+  template <typename ...ARGS>
+  void calculation(ARGS&& ...args) {
+    m_calculation = calculation_type(FUNC(std::forward<ARGS>(args)...));
+  }
   
-  //Term(starter_t &calculation) : m_calculation(calculation) { }
-    
   virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
 #ifndef NDEBUG
     for (auto child : TermBase::m_children) {

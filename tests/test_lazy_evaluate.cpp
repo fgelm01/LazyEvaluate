@@ -115,6 +115,52 @@ BOOST_AUTO_TEST_CASE(inline_subterms) {
   BOOST_REQUIRE_EQUAL(result, 11);
 }
 
+struct adder_coef{
+  adder_coef() {}
+  adder_coef(const int coef) : m_coef(coef) {}
+  int m_coef;
+
+  int operator()(int a, int b) {
+    std::cout << "Starting coefficient add " << a << " + " << b << std::endl;
+    std::this_thread::sleep_for (std::chrono::seconds(1));
+    return (a + b) * m_coef;
+  }
+};
+
+BOOST_AUTO_TEST_CASE(term_set_calc_after) {
+  TermValue five(5);
+  TermValue six(6);
+
+  adder_coef ac(2);
+  Term<adder_coef> twentytwo;
+  twentytwo.calculation(ac);
+  twentytwo.terms(five, six);
+
+  BOOST_REQUIRE_EQUAL(*twentytwo, 22);
+}
+
+BOOST_AUTO_TEST_CASE(term_set_calc_after_move) {
+  TermValue five(5);
+  TermValue six(6);
+
+  Term<adder_coef> twentytwo;
+  twentytwo.calculation(adder_coef(2));
+  twentytwo.terms(five, six);
+
+  BOOST_REQUIRE_EQUAL(*twentytwo, 22);
+}
+
+BOOST_AUTO_TEST_CASE(term_set_calc_after_emplace) {
+  TermValue five(5);
+  TermValue six(6);
+
+  Term<adder_coef> twentytwo;
+  twentytwo.calculation(2);
+  twentytwo.terms(five, six);
+
+  BOOST_REQUIRE_EQUAL(*twentytwo, 22);
+}
+
 BOOST_AUTO_TEST_CASE(two_level_term) {
 
   std::cout << "Setting up term" << std::endl;
