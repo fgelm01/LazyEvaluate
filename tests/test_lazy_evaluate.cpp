@@ -303,6 +303,21 @@ BOOST_AUTO_TEST_CASE(test_list_in_order) {
   BOOST_REQUIRE_EQUAL(fib[9], 55);
 }
 
+BOOST_AUTO_TEST_CASE(test_full_parallel) {
+  TermList<int> subterms;
+  TermValue five(5);
+  TermValue six(6);
+  
+  for (size_t i = 0; i < 20; ++i) 
+    subterms.push_back(Term(adder(), five, six));
+
+  auto result = *subterms;
+
+  for (int value : result) {
+    BOOST_REQUIRE_EQUAL(value, 11);
+  }
+}
+
 BOOST_AUTO_TEST_CASE(test_term_return) {
   Term<adder> top;
   auto [a, b] = top.terms(Term<adder>(), Term<adder>());
