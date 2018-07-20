@@ -80,7 +80,7 @@ class ThreadPoolCalculation :
 public:
   using func_t = FUNC;
   using traits_t = function_traits<FUNC>;
-  using args_t = typename traits_t::args_type;
+  using args_t = typename lang_utils::transform_tuple_type<std::decay, typename traits_t::args_type>::type;
   using return_t = typename traits_t::return_type;
   using future_t = typename std::future<return_t>;
 

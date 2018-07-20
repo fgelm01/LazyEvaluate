@@ -8,7 +8,7 @@
 
 struct adder {
   adder(){}
-  int operator()(int a, int b) {
+  int operator()(const int &a, const int &b) {
     std::cout << "Starting add " << a << " + " << b << std::endl;
     std::this_thread::sleep_for (std::chrono::seconds(1));
     return a + b;
