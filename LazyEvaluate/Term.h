@@ -251,6 +251,10 @@ public:
     m_state = EVALUATED;
   }
 
+  void set_default() {
+    *this = value_type();
+  }
+  
   virtual void clear() { }
     
   virtual ~TermValue() {}
