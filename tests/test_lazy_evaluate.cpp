@@ -26,13 +26,15 @@ using namespace libraries_oqton::LazyEvaluate;
 BOOST_AUTO_TEST_CASE(simple_calc) {
   ThreadPoolCalculation<adder> calc;
   std::mutex m;
-  std::condition_variable cv;
+  std::condition_variable done_cv;
+  std::condition_variable ready_cv;
   TermValue one(5);
   TermValue two(6);
   TermValue me(1);
   TermBase *controller = &me;
   TermBase *done = NULL;
-  auto fut = calc(m, cv, controller, done, std::vector<TermBase*>{&one, &two});
+  auto fut = calc(m, done_cv, ready_cv, controller, done,
+                  std::vector<TermBase*>{&one, &two});
   int result = fut.get();
   BOOST_REQUIRE_EQUAL(result, 11);
 }

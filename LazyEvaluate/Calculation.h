@@ -131,27 +131,22 @@ public:
         args_t());
   }
   
-  virtual future_t operator()(std::mutex &m, std::condition_variable &cv,
+  virtual future_t operator()(std::mutex &m,
+                              std::condition_variable &done_cv,
+                              std::condition_variable &ready_cv,
                               TermBase *controller, TermBase *&done,
                               const std::vector<TermBase*> &terms) {
     return ThreadPoolSingleton::Instance()->enqueue(
-      [&m, &cv, controller, &done, terms, this]() {
+      [&m, &done_cv, &ready_cv, controller, &done, terms, this]() {
         auto ret = apply(m_func,
                          terms_to_args_tup(terms));
         {
           std::unique_lock<std::mutex> lk(m);
-          while (done != NULL) {
-            cv.wait(lk);
-            if (done != NULL) {
-              lk.unlock();
-              cv.notify_one();
-              lk.lock();
-            }
-          }
+          if (done != NULL)
+            ready_cv.wait(lk);
           done = controller;
-          lk.unlock();
         }
-        cv.notify_one();
+        done_cv.notify_one();
         return ret;
       });
   }

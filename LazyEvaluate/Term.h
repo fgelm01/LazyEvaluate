@@ -79,33 +79,39 @@ public:
     }
 
     std::mutex m;
-    std::condition_variable cv;
+    std::condition_variable done_cv;
+    std::condition_variable ready_cv;
     TermBase *done = NULL;
     TermBase *done_local = NULL;
     //evaluate each undepended term, passing done condition, get evaluating list
-    for (TermBase *next : undependent)
-      next->apply(m, cv, done);
-
+    std::vector<TermBase*> finalizable;
+    
     while (m_state != EVALUATED) {
-      {
-        std::unique_lock<std::mutex> lk(m);
-        while (done == NULL) {
-          cv.wait(lk);
-          if (done == NULL) {
-            lk.unlock();	
-            cv.notify_one();
-            lk.lock();
-          }
+      if (undependent.empty()) {
+        {
+          std::unique_lock<std::mutex> lk(m);
+          if (done == NULL)
+            done_cv.wait(lk);
+          done_local = done;
+          done = NULL;
         }
-        done_local = done;
-        done = NULL;
-        lk.unlock();
+        ready_cv.notify_one();
       }
-      cv.notify_one();
+      else {
+        for (TermBase *next : undependent) {
+          std::cout << "Starting " << next->id() << std::endl;
+          if (next->apply(m, done_cv, ready_cv, done))
+            next->finalize();
+        }
+      }
+
+      std::cout << "Finishing " << done_local->id() << std::endl;
       done_local->finalize(); //force state change, should not block
       for (TermBase *parent : done_local->m_parents) {
         if (parent->children_evaluated()) {
-          parent->apply(m, cv, done);
+          std::cout << "Starting " << parent->id() << std::endl;
+          if (parent->apply(m, done_cv, ready_cv, done)) {
+            parent->finalize();
         }
       }
       for (TermBase *child : done_local->m_children) {
@@ -135,7 +141,9 @@ public:
   }
 
   virtual std::string id() const = 0;
-  virtual void apply(std::mutex &m, std::condition_variable &cv,
+  virtual bool apply(std::mutex &m,
+                     std::condition_variable &done_cv,
+                     std::condition_variable &ready_cv,
                      TermBase *&done) = 0;
   virtual void finalize() = 0;
   virtual void clear() = 0;
@@ -191,6 +199,7 @@ class CalculationBase {
 public:
   virtual std::future<RESULT> operator()(std::mutex&,
                                          std::condition_variable&,
+                                         std::condition_variable&,
                                          TermBase*,
                                          TermBase*&,
                                          const std::vector<TermBase*>&) = 0;
@@ -237,8 +246,10 @@ public:
   }
 
   //stub implementation so we can declare typed terms
-  virtual void apply(std::mutex &m, std::condition_variable &cv,
-                     TermBase *&done) {}
+  virtual bool apply(std::mutex &m,
+                     std::condition_variable &done_cv,
+                     std::condition_variable &ready_cv,
+                     TermBase *&done) { return true; }
 
   virtual void finalize() {
     //non-locked check of atomic to see if we can skip right to return
@@ -355,7 +366,10 @@ public:
     m_calculation = calculation_type(FUNC(std::forward<ARGS>(args)...));
   }
   
-  virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
+  virtual bool apply(std::mutex &m,
+                     std::condition_variable &done_cv,
+                     std::condition_variable &ready_cv,
+                     TermBase *&done) {
 #ifndef NDEBUG
     for (auto child : TermBase::m_children) {
       //m_state is atomic, and a state will never transition back from evaluated
@@ -368,9 +382,11 @@ public:
 
     if (TermBase::m_state == TermBase::UNSTARTED) {
       Typed::m_future =
-        m_calculation(m, cv, this, done, TermBase::m_children);
+        m_calculation(m, done_cv, ready_cv, this, done, TermBase::m_children);
       TermBase::m_state = TermBase::PENDING;
     }
+
+    return false;
   }
 
   virtual void clear() {
@@ -456,7 +472,10 @@ public:
   using iterator = decltype(boost::make_transform_iterator(TermBase::m_children.begin(),
                                                            MakeTermElem));
 
-  virtual void apply(std::mutex &m, std::condition_variable &cv, TermBase *&done) {
+  virtual bool apply(std::mutex &m,
+                     std::condition_variable &done_cv,
+                     std::condition_variable &ready_cv,
+                     TermBase *&done) {
 #ifndef NDEBUG
     for (auto child : TermBase::m_children) {
       //m_state is atomic, and a state will never transition back from evaluated
@@ -467,32 +486,34 @@ public:
     
     std::lock_guard<std::mutex> lock(TermBase::m_mutex);
 
+    std::promise<typename Typed::value_type> p;
+    Typed::m_future = p.get_future();
+    typename Typed::value_type value;
+    for (auto child : TermBase::m_children)
+      value.push_back(**static_cast<TermValue<VALUE>*>(child));
+    p.set_value(value);
+    
     if (TermBase::m_state == TermBase::UNSTARTED) {
-      TermBase::m_state = TermBase::PENDING;
+      TermBase::m_state = TermBase::EVALUATED;
     }
 
-    Typed::m_future = ThreadPoolSingleton::Instance()->enqueue(
-      [&m, &cv, this, &done]() {
+    /*Typed::m_future = ThreadPoolSingleton::Instance()->enqueue(
+      [&m, &done_cv, &ready_cv, this, &done]() {
         typename Typed::value_type ret;
         for (auto child : TermBase::m_children)
           ret.push_back(**static_cast<TermValue<VALUE>*>(child));
           
         {
           std::unique_lock<std::mutex> lk(m);
-          while (done != NULL) {
-            cv.wait(lk);
-            if (done != NULL) {
-              lk.unlock();
-              cv.notify_one();
-              lk.lock();
-            }
-          }
+          if (done != NULL)
+            ready_cv.wait(lk);
           done = this;
-          lk.unlock();
         }
-        cv.notify_one();
+        done_cv.notify_one();
         return ret;
-      });
+        });*/
+
+    return true;
   }
 
   virtual void clear() {
