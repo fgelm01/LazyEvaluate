@@ -57,6 +57,10 @@ public:
           continue;
 
         seen.emplace(cur);
+
+        for (TermBase* child : cur->m_children)
+          child->m_parents.push_back(cur);
+
         bool dependents = false;
         for (auto &child : cur->m_children)
           if (child->m_state != EVALUATED) {
@@ -130,6 +134,7 @@ public:
     return true;
   }
 
+  virtual std::string id() const = 0;
   virtual void apply(std::mutex &m, std::condition_variable &cv,
                      TermBase *&done) = 0;
   virtual void finalize() = 0;
@@ -153,7 +158,6 @@ public:
       m_children.push_back(new TERM(std::move(child)));
       m_allocated.push_back(true);
     }
-    m_children.back()->m_parents.push_back(this);
   }
   
   std::vector<TermBase*> m_children;
@@ -162,6 +166,23 @@ public:
   std::atomic<state_t> m_state;
   std::mutex m_mutex;
 };
+
+template <typename VALUE>
+std::string value_id(VALUE) {
+  return std::string("unknown");
+}
+
+inline std::string value_id(int) {
+  return std::string("int");
+}
+
+inline std::string value_id(std::string) {
+  return std::string("string");
+}
+
+inline std::string value_id(float) {
+  return std::string("float");
+}
 
 template <typename RESULT>
 class CalculationBase {
@@ -191,6 +212,10 @@ public:
   TermValue(RESULT value) : TermBase(EVALUATED), m_value(value) {}
   //Term(RESULT &&value) : TermBase(EVALUATED), m_value(std::move(value)) {}
 
+  virtual std::string id() const {
+    return std::string("TermValue<") + value_id(value_type()) + std::string(">");
+  }
+  
   const RESULT& no_eval_access() {
     return m_value;
   }
@@ -299,6 +324,10 @@ public:
   }
 
   void terms() {}
+
+  virtual std::string id() const {
+    return std::string("Term<") + m_calculation.id() + std::string(">");
+  }
   
   template <typename ...TERMS>
   auto terms(TERMS&& ...terms) {
@@ -388,6 +417,10 @@ public:
   }
   TermList(TermList<VALUE> &&other) 
     : Typed(std::move(other)) {}
+
+  virtual std::string id() const {
+    return std::string("TermList<") + value_id(VALUE()) + std::string(">");
+  }
   
   template <typename SUBTERM>
   typename std::decay<SUBTERM>::type& push_back(SUBTERM &&subterm) {

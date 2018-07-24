@@ -74,6 +74,21 @@ void test_tup_equivalency(TUP1 &&tup1, TUP2 &&tup2) {
                                 typename std::decay<TUP1>::type>::value>());
 }
 
+template<typename T>
+using id_method_t =
+  decltype( std::declval<T&>().id() );
+
+template <typename FUNC>
+std::string func_id(FUNC &&func) {
+  if constexpr (std::experimental::is_detected_v<id_method_t, FUNC>) {
+    return func.id();
+  }
+  else {
+    return std::string("unknown");
+  }
+}
+
+
 template <typename FUNC>
 class ThreadPoolCalculation :
     public CalculationBase<typename function_traits<FUNC>::return_type> {
@@ -141,7 +156,9 @@ public:
       });
   }
     
-  
+  std::string id() const {
+    return func_id(m_func);
+  }
 private:
   func_t m_func;
 };
