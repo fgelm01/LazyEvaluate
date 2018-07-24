@@ -82,46 +82,44 @@ public:
     std::condition_variable done_cv;
     std::condition_variable ready_cv;
     TermBase *done = NULL;
-    TermBase *done_local = NULL;
     //evaluate each undepended term, passing done condition, get evaluating list
-    std::vector<TermBase*> finalizable;
     
     while (m_state != EVALUATED) {
+      std::vector<TermBase*> finalizable;
       if (undependent.empty()) {
         {
           std::unique_lock<std::mutex> lk(m);
-          if (done == NULL)
+          if (done == NULL) {
+            ready_cv.notify_one();
             done_cv.wait(lk);
-          done_local = done;
+          }
+          finalizable.push_back(done);
           done = NULL;
-        }
-        ready_cv.notify_one();
-      }
-      else {
-        for (TermBase *next : undependent) {
-          std::cout << "Starting " << next->id() << std::endl;
-          if (next->apply(m, done_cv, ready_cv, done))
-            next->finalize();
         }
       }
 
-      std::cout << "Finishing " << done_local->id() << std::endl;
-      done_local->finalize(); //force state change, should not block
-      for (TermBase *parent : done_local->m_parents) {
-        if (parent->children_evaluated()) {
-          std::cout << "Starting " << parent->id() << std::endl;
-          if (parent->apply(m, done_cv, ready_cv, done)) {
-            parent->finalize();
-        }
+      for (TermBase *next : undependent) {
+        if (next->apply(m, done_cv, ready_cv, done))
+          finalizable.push_back(next);
       }
-      for (TermBase *child : done_local->m_children) {
-        if (child->parents_evaluated()) {
-          child->clear();
+
+      undependent.clear();
+      
+      for (auto cur : finalizable) {
+        cur->finalize(); //force state change, should not block
+        for (TermBase *parent : cur->m_parents) {
+          if (parent->children_evaluated()) {
+            undependent.push_back(parent);
+          }
+        }
+        for (TermBase *child : cur->m_children) {
+            if (child->parents_evaluated())
+              child->clear();
         }
       }
     }
   }
-
+    
   bool children_evaluated() {
     std::lock_guard<std::mutex> lk(m_mutex);
     for (auto &child : m_children)
@@ -494,7 +492,7 @@ public:
     p.set_value(value);
     
     if (TermBase::m_state == TermBase::UNSTARTED) {
-      TermBase::m_state = TermBase::EVALUATED;
+      TermBase::m_state = TermBase::PENDING;
     }
 
     /*Typed::m_future = ThreadPoolSingleton::Instance()->enqueue(

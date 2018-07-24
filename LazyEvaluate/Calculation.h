@@ -142,11 +142,11 @@ public:
                          terms_to_args_tup(terms));
         {
           std::unique_lock<std::mutex> lk(m);
-          if (done != NULL)
+          while (done != NULL)
             ready_cv.wait(lk);
           done = controller;
+          done_cv.notify_one();
         }
-        done_cv.notify_one();
         return ret;
       });
   }
