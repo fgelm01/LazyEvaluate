@@ -86,6 +86,7 @@ public:
 
 private:
   args_t terms_to_args_tup(const std::vector<TermBase*> &terms) {
+    assert(terms.size() == std::tuple_size<args_t>::value);
     args_t result;
     lang_utils::foreach_tuple_i(
       [&terms](const size_t i, auto &arg) {
