@@ -139,6 +139,7 @@ public:
                      TermBase *&done) = 0;
   virtual void finalize() = 0;
   virtual void clear() = 0;
+  void name(const std::string &name) { m_name = name; }
 
   virtual ~TermBase() {
     assert(m_allocated.size() == m_children.size());
@@ -165,6 +166,7 @@ public:
   std::vector<TermBase*> m_parents;
   std::atomic<state_t> m_state;
   std::mutex m_mutex;
+  std::string m_name;
 };
 
 template <typename VALUE>
@@ -213,7 +215,8 @@ public:
   //Term(RESULT &&value) : TermBase(EVALUATED), m_value(std::move(value)) {}
 
   virtual std::string id() const {
-    return std::string("TermValue<") + value_id(value_type()) + std::string(">");
+    return std::string("TermValue<") + value_id(value_type()) + std::string(">") +
+      std::string(":") + TermBase::m_name;
   }
   
   const RESULT& no_eval_access() {
@@ -326,7 +329,8 @@ public:
   void terms() {}
 
   virtual std::string id() const {
-    return std::string("Term<") + m_calculation.id() + std::string(">");
+    return std::string("Term<") + m_calculation.id() + std::string(">") +
+      std::string(":") + TermBase::m_name;
   }
   
   template <typename ...TERMS>
@@ -419,7 +423,8 @@ public:
     : Typed(std::move(other)) {}
 
   virtual std::string id() const {
-    return std::string("TermList<") + value_id(VALUE()) + std::string(">");
+    return std::string("TermList<") + value_id(VALUE()) + std::string(">") +
+      std::string(":") + TermBase::m_name;
   }
   
   template <typename SUBTERM>
