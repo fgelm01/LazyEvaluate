@@ -1,0 +1,6 @@
+[submodule "submodules/CppLangUtils"]
+	path = submodules/CppLangUtils
+	url = https://github.com/jsadusk/CppLangUtils
+[submodule "submodules/ThreadPool"]
+	path = submodules/ThreadPool
+	url = https://github.com/progschj/ThreadPool
