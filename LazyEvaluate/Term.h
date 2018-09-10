@@ -414,8 +414,16 @@ private:
   calculation_type m_calculation;
 };
 
+// Deduction guide for Term.
+// Makes `auto term = Term(x, y, z, w)` and `Term term(x, y, z, w)` work,
+// even with clang.
+template <typename FUNC, typename... TERMS>
+Term(FUNC&&, TERMS&&...) -> Term<std::decay_t<FUNC>>;
+
 //Only need this because there is something wrong with the declaration syntax
-//auto myterm = 
+//auto myterm =
+// No there isn't. That was just the most vexing parse. Also, clang and gcc
+// apparently disagree about the implicit deduction guides. See above.
 template <typename FUNC, template <typename> class CALC=ThreadPoolCalculation>
 auto makeTerm(FUNC &&func) {
   return Term<FUNC, CALC>(std::forward<FUNC>(func));

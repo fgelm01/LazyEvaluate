@@ -52,11 +52,13 @@ BOOST_AUTO_TEST_CASE(simple_compound_term) {
 BOOST_AUTO_TEST_CASE(term_from_temporary) {
   TermValue five(5);
   TermValue six(6);
-  // This should work, but seems to trigger a bug in g++
-  //Term eleven(adder());
+  // This should work, but seems to trigger a bug in g++.
+  // This is no bug. It's just most vexing parse.
+  // `Foo bar(baz())` is a function. `Foo bar{baz()}` is an object.
+  Term eleven{adder()};
 
   // So instead declare terms from temporaries like this
-  auto eleven = Term(adder());
+  // auto eleven = Term(adder());
   
   eleven.terms(five, six);
   int result = *eleven;
